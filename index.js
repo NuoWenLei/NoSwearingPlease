@@ -34,22 +34,22 @@
         "z": ["ᘔ", "Z", "ⓩ", "Ⓩ", "Ⱬ", "ẓ", "Ẓ", "ፚ", "Ꮓ", "ʐ", "ｚ", "Ｚ", "ᴢ", "🅩", "𝐳", "𝐙", "𝘻", "𝘡", "𝙯", "𝙕", "𝓏", "𝔃", "𝓩", "𝕫", "𝕋", "𝔷", "𝔙", "𝖟", "𝖅", "🅉", "🆉", "𝒵", "ȥ", "𝚣", "𝚉", "☡"]
     }
 
-    var vowels = [
-        "a", "e", "i", "o", "u", "y" // - Y only sometimes
-    ]
-    var combinedHSounds = [
-        "c", "t", "s", "w"
-    ]
+    var vowels = {
+        "a": "a", "e": "e", "i": "i", "o": "o", "u": "u", "y": "y" // - Y only sometimes
+    }
+    var combinedHSounds = {
+        "c": "c", "t": "t", "s": "s", "w": "w"
+    }
     var distinctCombinedVowels = {
-        a: ["o", "e"],
-        i: ["a", "e", "o", "u"],
-        e: ["i", "e"],
-        o: ["e", "o"],
-        u: ["a", "o"]
+        a: { "o": "o", "e": "e" },
+        i: { "a" : "a", "e": "e", "o": "o", "u": "u" },
+        e: { "i": "i", "e": "e" },
+        o: { "e": "e", "o": "o" },
+        u: { "a": "a", "o": "o" }
     }
 
     function isCombinedH(prev, prev2) {
-        return prev != prev2 && combinedHSounds.indexOf(prev) != -1;
+        return prev != prev2 && combinedHSounds.hasOwnProperty(prev) != false;
     }
 
     var convertMap = new Map();
@@ -60,7 +60,7 @@
     }
 
     var swapTable = {
-        o: ["u"],
+        //  o: ["a"],
         u: ["o"],
         i: ["e"]
     }
@@ -72,11 +72,11 @@
 
     function vowelDistinct(last, first) {
         if (!distinctCombinedVowels[last]) return false;
-        return distinctCombinedVowels[last].indexOf(first) != -1;
+        return distinctCombinedVowels[last].hasOwnProperty(first) != false;
     }
 
     function isVowel(char) {
-        return vowels.indexOf(char) != -1;
+        return vowels.hasOwnProperty(char) != false;
     }
 
     function isHard(char) {
@@ -250,8 +250,16 @@
             for (var i = 0; i < text.length; i++) {
                 if (watch) {
                     var word = watch.word;
+
+                    if (watch.info === 0) {
+                      // Remove white listed words.
+                      input =
+                        input.replace(/\W/g, "").replaceAll(watch.wordOriginal.replace(/\s/g, ""), "") ||
+                        input;
+                    }
+
                     var skipMode = canSkip(text, word, wi, i);
-                    console.log(i, wi, ind, word, text[i], word[wi], skipMode)
+                    // console.log(i, wi, ind, word, text[i], word[wi], skipMode)
                     if (
                         skipMode
                     ) {
@@ -273,7 +281,8 @@
                                 (!isVowel(text[i]) || !isVowel(text[i + 1]) || !vowelDistinct(text[i + 1], text[i])) &&
                                 countSyllables(text.substring(index, i + 1)) <= countSyllables(word) && // Syllables must not be less than text
                                 (!isHard(text[i]) || postModifyingSounds.indexOf(text[i + 1]) == -1) &&
-                                (combinedHSounds.indexOf(text[i]) == -1 || text[i + 1] != "h")
+                                (combinedHSounds.hasOwnProperty(text[i]) == false || text[i + 1] != "h") &&
+                                (watch.info === 1 || watch.info === 2)
                             ) {
                                 detected.push({
                                     original: inputArr.slice(posmap[index], posmap[i] + 1).join(""),
@@ -353,7 +362,11 @@
                             deviations = 0;
                             wi = 1;
                             co = 0;
-                            if (watch.word.length == 1 && (watch.word == "i" || watch.word == "a")) {
+                            if (
+                                watch.word.length == 1
+                                && (watch.word == "i" || watch.word == "a")
+                                && (watch.info === 1 || watch.info === 2)
+                               ) {
                                 detected.push({
                                     original: text[i],
                                     word: watch.wordOriginal,
@@ -364,7 +377,7 @@
                                 });
                                 watch = null
                                 i--;
-                            }
+                              }
 
                         } else {
                             ind = 0;
@@ -541,12 +554,38 @@
                 if (!res) return;
                 recurse2(res);
             });
+
+            /**
+             * The following part checks if there
+             * is a 1 by 1 match of a profanity
+             * word in the profanity list in case
+             * of no detection by spelling.
+            */
+            if (out.length === 0) {
+              this.list.find((word) => {
+                let replacedWord =
+                  input.match(word.wordOriginal) ||
+                  input.replace(/\W/g, "").match(word.wordOriginal.replace(/\s/g, ""));
+
+                if (replacedWord !== null) {
+                  out.push({
+                    deviations: deviations,
+                    end: end,
+                    info: word.info,
+                    original: replacedWord[0],
+                    replacedLen: replacedWord.length,
+                    word: word.wordOriginal,
+                    start: 0,
+                  });
+                }
+              })
+            }
             return out;
         }
     }
 
     if (typeof module !== "undefined" && typeof module.exports !== "undefined") {
-        var noSwearing = new NoSwearing(JSON.parse(require("fs").readFileSync(__dirname + "/swears.json", "utf8")));
+        var noSwearing = new NoSwearing(require("./swears.json"));
         module.exports = function (text) {
             return noSwearing.check(text);
         }
